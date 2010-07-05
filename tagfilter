@@ -1,0 +1,349 @@
+#!/bin/bash
+
+# --------------------------------------------------------------------
+#
+#    tagfilter V 1.2
+#
+#    (C) 27.06.2010 eurekafag <eurekafag@eureka7.ru>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# --------------------------------------------------------------------
+#
+# REQUIRES: GNU coreutils, Imagemagick, filesystem with hardlink support
+#
+
+
+TAGSDIR=~/pics
+QUERYDIR=~/query
+
+filter_AND()
+{
+    for FILE in $1/*
+    do
+	find $2 -samefile "$FILE" -exec ln {} $QUERYDIR/tmp \;
+    done
+    rm $QUERYDIR/* 2>/dev/null
+    mv $QUERYDIR/tmp/* $QUERYDIR 2>/dev/null
+}
+
+filter_OR()
+{ 
+    find $1 -type f -exec ln {} $QUERYDIR/tmp \;
+    mv -b --backup=t $QUERYDIR/tmp/* $QUERYDIR 2>/dev/null
+    if [ -n "$2" ]
+    then
+	find $2 -type f -exec ln {} $QUERYDIR/tmp \;
+	mv -b --backup=t $QUERYDIR/tmp/* $QUERYDIR 2>/dev/null
+    fi
+}
+
+filter_NOT()
+{
+    FOUND=
+    for FILE in $1/*
+    do
+	FOUND=$( find $2 -samefile "$FILE" )
+	if [ -z "$FOUND" ]
+	then
+	    ln "$FILE" $QUERYDIR/tmp 2>/dev/null
+	fi
+    done
+    rm $QUERYDIR/* 2>/dev/null
+    mv $QUERYDIR/tmp/* $QUERYDIR 2>/dev/null
+}
+
+filter_SIZE()
+{
+    # if set, the size is fixed, if not, it's either aspect or WP/SQ.
+    FIXED=
+    if [ -n "`echo $2 | sed -n "/^[<>=]\?[0-9]*[xX][<>=]\?[0-9]*$/p"`" ]
+    then
+	OFS=$IFS
+	IFS="|"
+	PARSED=( $( echo $2 | sed -n "s/^\([<>=]\?\)\([0-9]*\)\([xX]\)\([<>=]\?\)\([0-9]*\)$/\1|\2|\3|\4|\5/p" ) )
+	WOPER=${PARSED[0]}
+	WSIZE=${PARSED[1]}
+	OPER=${PARSED[2]}
+	HOPER=${PARSED[3]}
+	HSIZE=${PARSED[4]}
+	IFS=$OFS
+	if [ -z "$WOPER" ]
+	then
+	    WOPER="="
+	fi
+	if [ -z "$HOPER" ]
+	then
+	    HOPER="="
+	fi
+	if [ -z "$HSIZE" ]
+	then
+	    HOPER=">"
+	    HSIZE=0
+	fi
+	if [ -z "$WSIZE" ]
+	then
+	    WOPER=">"
+	    WSIZE=0
+	fi
+	FIXED=1
+	#echo $WOPER $WSIZE $OPER $HOPER $HSIZE
+    fi
+    
+    if [ -n "`echo $2 | sed -n "/^[0-9]*:[0-9]*$/p"`" ]
+    then
+	OFS=$IFS
+	IFS="|"
+	PARSED=( $( echo $2 | sed -n "s/^\([0-9]*\):\([0-9]*\)$/\1|\2/p" ) )
+	WASPECT=${PARSED[0]}
+	HASPECT=${PARSED[1]}
+	if [ -z "$WASPECT" ]
+	then
+	    WASPECT=1
+	fi
+	if [ -z "$HASPECT" ]
+	then
+	    HASPECT=1
+	fi
+	IFS=$OFS
+    fi
+    
+    if [ -z "$2" -o -z "$FIXED" -a "$2" != "WP" -a "$2" != "SQ" -a -z "$HASPECT" -a -z "$WASPECT" ]
+    then
+	echo "Errorneus SIZE argument, skipping..."
+	return
+    fi
+    for FILE in $1/*
+    do
+	IMGSIZE=( $( identify "$FILE" | sed -n "s/.* \([0-9]*\)x\([0-9]*\) .*/\1 \2/p" ) )
+	if [ -z "$IMGSIZE" ]
+	then
+	    continue
+	fi    
+	RESULT=
+	if [ -z "$FIXED" ]
+	then
+	    if [ -n "$WASPECT" -a -n "$HASPECT" ]
+	    then
+		if [ "$(( IMGSIZE[0] * HASPECT / WASPECT ))" -eq ${IMGSIZE[1]} ]
+		then
+		    RESULT=1
+		fi
+	    fi
+	    case $2 in
+		"WP" )
+		    if [ "$(( IMGSIZE[0] * 3 / 4 ))" -eq ${IMGSIZE[1]} -o "$(( IMGSIZE[0] * 9 / 16 ))" -eq ${IMGSIZE[1]} -o "$(( IMGSIZE[0] * 10 / 16 ))" -eq ${IMGSIZE[1]} ]
+		    then
+			RESULT=1
+		    fi
+		    ;;
+		"SQ" )
+		    if [ "${IMGSIZE[0]}" -eq "${IMGSIZE[1]}" ]
+		    then
+			RESULT=1
+		    fi
+		    ;;
+	    esac
+	else
+	    case $WOPER in
+		">" )
+		    if [ "${IMGSIZE[0]}" -gt "$WSIZE" ]
+		    then
+			RESULT=1
+		    fi
+		    ;;
+		"<" )
+		    if [ ${IMGSIZE[0]} -lt $WSIZE ]
+		    then
+			RESULT=1
+		    fi
+		    ;;
+		"=" )
+		    if [ ${IMGSIZE[0]} -eq $WSIZE ]
+		    then
+			RESULT=1
+		    fi
+		    ;;
+	    esac
+	    if [ "$OPER" == "x" -a -z "$RESULT" ]
+	    then
+		continue
+	    fi
+	    
+	    case $HOPER in
+		">" )
+		    if [ "${IMGSIZE[1]}" -gt "$HSIZE" ]
+		    then
+			(( RESULT++ ))
+		    fi
+		    ;;
+		"<" )
+		    if [ ${IMGSIZE[1]} -lt $HSIZE ]
+		    then
+			(( RESULT++ ))
+		    fi
+		    ;;
+		"=" )
+		    if [ ${IMGSIZE[1]} -eq $HSIZE ]
+		    then
+			(( RESULT++ ))
+		    fi
+		    ;;
+	    esac
+	    if [ "$OPER" == "x" -a "$RESULT" != "2" ]
+	    then
+		continue
+	    fi	
+	fi
+		    
+	if [ -n "$RESULT" ]
+	then
+	    ln "$FILE" $QUERYDIR/tmp
+	fi
+    done
+    
+    rm $QUERYDIR/* 2>/dev/null
+    mv $QUERYDIR/tmp/* $QUERYDIR 2>/dev/null
+}
+
+if [ "$1" == "-h" -o "$1" == "--help" -o "$1" == "--usage" ]
+then
+    echo "Important vars in this script:
+TAGSDIR - directory with subdirs-tags and pictures in them;
+QUERYDIR - directory where query result will be put into;
+
+Remember! Tags are case-sensitive (actually, they are just directories that's why).
+
+Operations:
+
+AND <tag>			- leaves only files that belong to both current set and <tag>
+OR <tag>			- adds files that belong to <tag>
+NOT <tag>			- removes from current set files that belong to <tag>
+SIZE [<>=][num]x/X[<>=][num]	- filters by size. All parameters are optional except x or X.
+				  x means AND and X means OR (in this operation only).
+				  Omitted parts defaults to > and 0.
+SIZE WP				- filters by aspect ratio 4:3, 16:9 and 16:10.
+				  Yes, for filtering wallpapers, you're damn right.
+SIZE [num]:[num]		- filters by aspect ratio, omitted values defaults to 1.
+
+Usage:
+`basename $0` Coolface AND PeKa NOT Macros
+Results in pics where both coolface and peka-face present but which aren't macroses.
+---
+`basename $0` Cats OR Winrar AND Motivator
+Results in pics with cats and winrar that are both motivators.
+---
+`basename $0` Cats SIZE WP
+Gives wallpapers with cats.
+---
+`basename $0` Stickers SIZE SQ
+Gives square stickers.
+---
+`basename $0` Anime SIZE \">500x<700\"
+Queries anime pictures that are more than 500px wide AND less than 700 high.
+---
+`basename $0` Nature SIZE \"1920X>700\"
+Queries nature pictures that are 1920px wide OR more than 700 high.
+---
+`basename $0` Abstract SIZE 16:9
+Queries abstract wallpapers for 16:9 desktops.
+"
+    exit
+fi
+
+if [ ! -d $TAGSDIR -o ! -d $QUERYDIR ]
+then
+    echo "Check your \$TAGSDIR and \$QUERYDIR parameters and set it to existing paths"
+    exit
+fi
+
+ARGS=( $* )
+ARGNUM=$#
+TAGFLAG=0
+FIRSTARG=${ARGS[0]}
+
+rm -rf $QUERYDIR/* 2>/dev/null
+mkdir $QUERYDIR/tmp
+
+for (( arg = 1; arg < $ARGNUM; arg++ ))
+do
+    if [ "$TAGFLAG" -eq "1" ]
+    then
+	SECONDARG=${ARGS[arg]}
+	if [ "$FIRSTARG" != "|" ]
+	then
+	    case $OPER in
+		"AND" )
+ 		    filter_AND $TAGSDIR/$FIRSTARG $TAGSDIR/$SECONDARG
+		    ;;
+		"OR"  )
+ 		    filter_OR $TAGSDIR/$FIRSTARG $TAGSDIR/$SECONDARG
+		    ;;
+		"NOT" )
+ 		    filter_NOT $TAGSDIR/$FIRSTARG $TAGSDIR/$SECONDARG
+		    ;;
+		"SIZE" )
+		    filter_SIZE $TAGSDIR/$FIRSTARG $SECONDARG
+		    ;;
+	    esac
+	else
+	    case $OPER in
+		"AND" )
+		    filter_AND $QUERYDIR $TAGSDIR/$SECONDARG
+		    ;;
+		"OR"  )
+		    filter_OR $TAGSDIR/$SECONDARG
+		    ;;
+		"NOT" )
+ 		    filter_NOT $QUERYDIR $TAGSDIR/$SECONDARG
+		    ;;
+		"SIZE" )
+		    filter_SIZE $QUERYDIR $SECONDARG
+		    ;;
+	    esac
+	fi
+	FIRSTARG="|"
+	TAGFLAG=0
+    else
+	OPER=${ARGS[arg]}
+	TAGFLAG=1
+    fi
+done
+
+# postprocessing
+
+rm -rf $QUERYDIR/tmp
+
+FOUND=
+for FILE in $QUERYDIR/*
+do
+    FOUND=$( find $QUERYDIR -samefile $FILE 2>/dev/null )
+    if [ -n "$FOUND" -a "$FOUND" != "$FILE" ]
+    then
+	rm $FILE
+    fi
+done
+
+for FILE in $QUERYDIR/*
+do
+    if [ -n "`echo $FILE | sed -n "/\.~[0-9]*~$/p"`" ]
+    then
+	BASE=`basename $FILE | sed -n "s/\(.*\)\.~[0-9]*~/\1/p"`
+	while [ -f $QUERYDIR/$BASE ]
+	do
+	    BASE=_$BASE
+	done
+	mv $FILE $QUERYDIR/$BASE
+    fi
+done

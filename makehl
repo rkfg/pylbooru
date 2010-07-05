@@ -1,0 +1,38 @@
+#!/bin/sh
+
+cd ..
+IFS='|'
+DIRS=$( zenity --file-selection --directory --multiple )
+
+if [ -z $DIRS ]
+then
+    exit
+fi
+
+if [ -n "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" ]
+then
+
+    for DIR in $DIRS
+    do 
+	IFS='
+'
+	for arg in $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
+	do
+	    ln "$arg" "$DIR"
+	done
+	IFS='|'
+    done
+
+else
+
+    for DIR in $DIRS
+    do 
+	for arg in "$@"
+	do
+	    ln "$arg" "$DIR"
+	done
+    done
+
+fi
+
+notify-send "Tagging finished."
