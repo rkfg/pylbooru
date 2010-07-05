@@ -68,7 +68,7 @@ filter_SIZE()
 {
     # if set, the size is fixed, if not, it's either aspect or WP/SQ.
     FIXED=
-    if [ -n "`echo $2 | sed -n "/^[<>=]\?[0-9]*[xX][<>=]\?[0-9]*$/p"`" ]
+    if [ -n "$( echo $2 | sed -n "/^[<>=]\?[0-9]*[xX][<>=]\?[0-9]*$/p" )" ]
     then
 	OFS=$IFS
 	IFS="|"
@@ -101,7 +101,7 @@ filter_SIZE()
 	#echo $WOPER $WSIZE $OPER $HOPER $HSIZE
     fi
     
-    if [ -n "`echo $2 | sed -n "/^[0-9]*:[0-9]*$/p"`" ]
+    if [ -n "$( echo $2 | sed -n "/^[0-9]*:[0-9]*$/p" )" ]
     then
 	OFS=$IFS
 	IFS="|"

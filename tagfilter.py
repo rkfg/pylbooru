@@ -1,10 +1,11 @@
-#!/bin/sh
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
 
 # --------------------------------------------------------------------
 #
-#    shellbooru V 1.3
+#    tagfilter V 1.2
 #
-#    (C) 2010 eurekafag <eurekafag@eureka7.ru>
+#    (C) 27.06.2010 eurekafag <eurekafag@eureka7.ru>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -21,50 +22,17 @@
 #
 # --------------------------------------------------------------------
 #
-# REQUIRES: zenity, thunar/nautilus, notification daemon (optional), filesystem with hardlink support
+# REQUIRES: GNU coreutils, Imagemagick, filesystem with hardlink support
 #
 
-makelink()
-{
+import os, sys
 
-}
+try:
+    import sqlite3
+except:
+    print "No sqlite python module found."
+    sys.exit(1)
 
-cd ..
-IFS='|'
-DIRS=$( zenity --file-selection --directory --multiple )
+TAGSDIR = "~/pics"
+QUERYDIR = "~/query"
 
-if [ -z $DIRS ]
-then
-    exit
-fi
-
-if [ -n "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS" ]
-then
-
-    for DIR in $DIRS
-    do 
-	IFS='
-'
-	for arg in $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS
-	do
-	    makelink "$arg" "$DIR"
-	done
-	IFS='|'
-    done
-
-else
-
-    for DIR in $DIRS
-    do 
-	for arg in "$@"
-	do
-	    makelink "$arg" "$DIR"
-	done
-    done
-
-fi
-
-if [ -n `which notify-send` ]
-then
-    notify-send "Tagging finished."
-fi
