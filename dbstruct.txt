@@ -1,0 +1,16 @@
+Filetable:
+
+| inode | filename | mtime |
+----------------------------
+
+Tagstable:
+
+| inode |     tagtype     |   tagvalue   |
+------------------------------------------
+          1 - name          [dirname]
+          2 - size          wxh/aspect
+
+Dirtable:
+
+| dirname | mtime |
+
